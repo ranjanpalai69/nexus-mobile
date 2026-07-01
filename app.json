@@ -47,8 +47,7 @@
         "expo-notifications",
         {
           "icon": "./assets/notification-icon.png",
-          "color": "#9333EA",
-          "sounds": ["./assets/notification.wav"]
+          "color": "#9333EA"
         }
       ],
       [
@@ -69,9 +68,6 @@
     "extra": {
       "router": {
         "origin": false
-      },
-      "eas": {
-        "projectId": "nexus-mobile"
       }
     }
   }
