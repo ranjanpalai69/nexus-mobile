@@ -1,8 +1,16 @@
-﻿import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback } from 'react'
 import { Alert } from 'react-native'
+import {
+  mediaDevices,
+  RTCPeerConnection,
+  RTCIceCandidate,
+} from 'react-native-webrtc'
 import { getSocket } from '@/lib/socket'
 import { useCallStore } from '@/store/callStore'
 import { useAuthStore } from '@/store/authStore'
+
+// react-native-webrtc RTCPeerConnection doesn't fully match browser types; use any for internal PC ref
+type PC = InstanceType<typeof RTCPeerConnection>
 
 export function useCall() {
   const user = useAuthStore((s) => s.user)
@@ -23,7 +31,7 @@ export function useCall() {
     endCall,
   } = useCallStore()
 
-  const pcRef = useRef<RTCPeerConnection | null>(null)
+  const pcRef = useRef<PC | null>(null)
 
   const cleanup = useCallback(() => {
     if (pcRef.current) {
@@ -36,27 +44,23 @@ export function useCall() {
   const acceptCall = useCallback(async () => {
     if (!user?.id || !conversationId) return
     try {
-      const { mediaDevices } = await import('react-native-webrtc')
       const stream = await mediaDevices.getUserMedia({
         audio: true,
         video: callType === 'video',
       })
       setLocalStream(stream)
 
-      const { RTCPeerConnection } = await import('react-native-webrtc')
       const pc = new RTCPeerConnection({
         iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
-      })
+      }) as unknown as any
+
       pcRef.current = pc
+      ;(stream as any).getTracks().forEach((track: any) => pc.addTrack(track, stream))
 
-      stream.getTracks().forEach((track) => pc.addTrack(track, stream))
-
-      pc.ontrack = (event) => {
-        setRemoteStream(event.streams[0])
-      }
+      pc.ontrack = (event: any) => setRemoteStream(event.streams[0])
 
       const socket = getSocket(user.id)
-      pc.onicecandidate = (event) => {
+      pc.onicecandidate = (event: any) => {
         if (event.candidate) {
           socket.emit('call:ice', { conversationId, candidate: event.candidate, to: remoteUser?.id })
         }
@@ -64,7 +68,7 @@ export function useCall() {
 
       socket.emit('call:accept', { conversationId, to: remoteUser?.id })
 
-      socket.on('call:offer', async (data: { offer: RTCSessionDescriptionInit }) => {
+      socket.on('call:offer', async (data: { offer: any }) => {
         await pc.setRemoteDescription(data.offer)
         const answer = await pc.createAnswer()
         await pc.setLocalDescription(answer)
@@ -72,13 +76,12 @@ export function useCall() {
         setCallActive()
       })
 
-      socket.on('call:ice', async (data: { candidate: RTCIceCandidateInit }) => {
+      socket.on('call:ice', async (data: { candidate: any }) => {
         try {
-          const { RTCIceCandidate } = await import('react-native-webrtc')
           await pc.addIceCandidate(new RTCIceCandidate(data.candidate))
         } catch {}
       })
-    } catch (err) {
+    } catch {
       Alert.alert('Call failed', 'Could not access camera/microphone')
       cleanup()
     }
@@ -95,22 +98,20 @@ export function useCall() {
     async (targetUserId: string, targetConversationId: string, type: 'audio' | 'video') => {
       if (!user?.id) return
       try {
-        const { mediaDevices } = await import('react-native-webrtc')
         const stream = await mediaDevices.getUserMedia({ audio: true, video: type === 'video' })
         setLocalStream(stream)
 
-        const { RTCPeerConnection } = await import('react-native-webrtc')
         const pc = new RTCPeerConnection({
           iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
-        })
+        }) as unknown as any
+
         pcRef.current = pc
+        ;(stream as any).getTracks().forEach((track: any) => pc.addTrack(track, stream))
 
-        stream.getTracks().forEach((track) => pc.addTrack(track, stream))
-
-        pc.ontrack = (event) => setRemoteStream(event.streams[0])
+        pc.ontrack = (event: any) => setRemoteStream(event.streams[0])
 
         const socket = getSocket(user.id)
-        pc.onicecandidate = (event) => {
+        pc.onicecandidate = (event: any) => {
           if (event.candidate) {
             socket.emit('call:ice', { conversationId: targetConversationId, candidate: event.candidate, to: targetUserId })
           }
@@ -121,23 +122,22 @@ export function useCall() {
 
         socket.emit('call:invite', { conversationId: targetConversationId, offer, to: targetUserId, callType: type })
 
-        socket.on('call:answer', async (data: { answer: RTCSessionDescriptionInit }) => {
+        socket.on('call:answer', async (data: { answer: any }) => {
           await pc.setRemoteDescription(data.answer)
           setCallActive()
         })
 
-        socket.on('call:ice', async (data: { candidate: RTCIceCandidateInit }) => {
+        socket.on('call:ice', async (data: { candidate: any }) => {
           try {
-            const { RTCIceCandidate } = await import('react-native-webrtc')
             await pc.addIceCandidate(new RTCIceCandidate(data.candidate))
           } catch {}
         })
 
         socket.on('call:reject', () => {
-          Alert.alert('Call rejected', `${targetUserId} declined the call`)
+          Alert.alert('Call rejected', 'The call was declined')
           cleanup()
         })
-      } catch (err) {
+      } catch {
         Alert.alert('Call failed', 'Could not start call')
         cleanup()
       }

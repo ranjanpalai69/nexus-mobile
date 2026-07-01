@@ -1,208 +1,70 @@
-import { useRef, useState, useEffect } from 'react'
-import { View, Text, ActivityIndicator, TouchableOpacity, KeyboardAvoidingView, Platform, Animated } from 'react-native'
+﻿import React, { useState } from 'react'
+import { View, Text, TouchableOpacity, KeyboardAvoidingView, Platform, Alert } from 'react-native'
 import { router, useLocalSearchParams } from 'expo-router'
-import { Image } from 'expo-image'
 import { useForm, Controller } from 'react-hook-form'
-import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
-import Toast from 'react-native-toast-message'
-import { Ionicons } from '@expo/vector-icons'
-import { OtpInput } from '@/components/ui/OtpInput'
+import { z } from 'zod'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
-import { LOGO_WHITE, API_URL } from '@/constants/config'
+import { OtpInput } from '@/components/ui/OtpInput'
+import { resetPasswordApi } from '@/lib/utils/otp'
 
-const pwSchema = z.object({
-  password: z.string().min(8, 'Min 8 characters'),
+const schema = z.object({
+  password: z.string().min(8, 'Minimum 8 characters'),
   confirm: z.string(),
 }).refine((d) => d.password === d.confirm, { message: 'Passwords do not match', path: ['confirm'] })
-type PwForm = z.infer<typeof pwSchema>
+type FormData = z.infer<typeof schema>
 
 export default function ResetPasswordScreen() {
   const { email } = useLocalSearchParams<{ email: string }>()
-  const [step, setStep] = useState<'otp' | 'password'>('otp')
-  const [otp, setOtp] = useState('')
-  const [validating, setValidating] = useState(false)
+  const [code, setCode] = useState('')
   const [loading, setLoading] = useState(false)
-  const [resending, setResending] = useState(false)
-  const [cooldown, setCooldown] = useState(0)
-  const [successFlash, setSuccessFlash] = useState(false)
-  const autoFired = useRef(false)
-  const validatedOtp = useRef('')
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const flashOpacity = useRef(new Animated.Value(0)).current
+  const { control, handleSubmit, formState: { errors } } = useForm<FormData>({
+    resolver: zodResolver(schema),
+    defaultValues: { password: '', confirm: '' },
+  })
 
-  const { control, handleSubmit, formState: { errors } } = useForm<PwForm>({ resolver: zodResolver(pwSchema) })
-
-  useEffect(() => {
-    return () => { if (timerRef.current) clearInterval(timerRef.current) }
-  }, [])
-
-  useEffect(() => {
-    const complete = otp.length === 6
-    if (!complete) { autoFired.current = false; return }
-    if (autoFired.current) return
-    autoFired.current = true
-    validateOtp(otp)
-  }, [otp])
-
-  const showSuccessFlash = () => {
-    setSuccessFlash(true)
-    Animated.sequence([
-      Animated.timing(flashOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
-      Animated.delay(400),
-      Animated.timing(flashOpacity, { toValue: 0, duration: 200, useNativeDriver: true }),
-    ]).start(() => {
-      setSuccessFlash(false)
-      setStep('password')
-    })
-  }
-
-  const validateOtp = async (code: string) => {
-    setValidating(true)
-    try {
-      const res = await fetch(`${API_URL}/api/auth/validate-otp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, type: 'reset', code }),
-      })
-      if (!res.ok) {
-        Toast.show({ type: 'error', text1: 'Invalid or expired code' })
-        setOtp('')
-        autoFired.current = false
-        return
-      }
-      validatedOtp.current = code
-      showSuccessFlash()
-    } catch {
-      Toast.show({ type: 'error', text1: 'Connection error.' })
-      setOtp('')
-      autoFired.current = false
-    } finally {
-      setValidating(false)
+  async function onSubmit({ password }: FormData) {
+    if (code.length !== 6) {
+      Alert.alert('Missing code', 'Please enter the 6-digit code from your email')
+      return
     }
-  }
-
-  const startCooldown = () => {
-    setCooldown(60)
-    timerRef.current = setInterval(() => {
-      setCooldown((prev) => {
-        if (prev <= 1) { clearInterval(timerRef.current!); return 0 }
-        return prev - 1
-      })
-    }, 1000)
-  }
-
-  const handleResend = async () => {
-    if (resending || cooldown > 0) return
-    setResending(true)
-    try {
-      const res = await fetch(`${API_URL}/api/auth/resend-otp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, type: 'reset' }),
-      })
-      if (res.ok) {
-        Toast.show({ type: 'success', text1: 'Code resent!' })
-        startCooldown()
-        setOtp('')
-        autoFired.current = false
-      } else {
-        Toast.show({ type: 'error', text1: 'Failed to resend.' })
-      }
-    } finally {
-      setResending(false)
-    }
-  }
-
-  const handleReset = async ({ password }: PwForm) => {
     setLoading(true)
     try {
-      const res = await fetch(`${API_URL}/api/auth/reset-password`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, code: validatedOtp.current, password }),
-      })
-      const result = await res.json()
-      if (!res.ok) {
-        if (result.error?.includes('expired') || result.error?.includes('invalid')) {
-          Toast.show({ type: 'error', text1: 'Code expired. Please restart.' })
-          setStep('otp')
-          setOtp('')
-          validatedOtp.current = ''
-          autoFired.current = false
-        } else {
-          Toast.show({ type: 'error', text1: result.error || 'Reset failed' })
-        }
-        return
-      }
-      Toast.show({ type: 'success', text1: 'Password reset! Please sign in.' })
-      router.replace('/(auth)/login')
-    } catch {
-      Toast.show({ type: 'error', text1: 'Connection error.' })
+      await resetPasswordApi(email, code, password)
+      Alert.alert('Success', 'Password reset! Please log in.', [
+        { text: 'OK', onPress: () => router.replace('/(auth)/login') },
+      ])
+    } catch (err) {
+      Alert.alert('Error', err instanceof Error ? err.message : 'Reset failed')
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <View style={{ flex: 1, padding: 24, justifyContent: 'center', gap: 32 }}>
-        <View style={{ alignItems: 'center', gap: 12 }}>
-          <Image source={{ uri: LOGO_WHITE }} style={{ width: 140, height: 40 }} contentFit="contain" />
-          <Text style={{ color: '#FFFFFF', fontSize: 22, fontWeight: '700', marginTop: 8 }}>
-            {step === 'otp' ? 'Enter reset code' : 'New password'}
-          </Text>
-          {step === 'otp' && (
-            <Text style={{ color: '#7C6FAD', fontSize: 14, textAlign: 'center', lineHeight: 20 }}>
-              Code sent to{'\n'}
-              <Text style={{ color: '#9333EA', fontWeight: '600' }}>{email}</Text>
-            </Text>
-          )}
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} className="flex-1 bg-dark-bg">
+      <View className="flex-1 px-6 pt-20 pb-10">
+        <TouchableOpacity onPress={() => router.back()} className="mb-8">
+          <Text className="text-purple-400 text-base">← Back</Text>
+        </TouchableOpacity>
+
+        <Text className="text-white font-bold text-3xl mb-2">Reset Password</Text>
+        <Text className="text-gray-400 text-base mb-8">Enter the code from your email and choose a new password.</Text>
+
+        <Text className="text-gray-400 text-sm mb-3 font-medium">Verification Code</Text>
+        <OtpInput value={code} onChange={setCode} length={6} />
+
+        <View className="mt-6">
+          <Controller control={control} name="password" render={({ field: { onChange, value, onBlur } }) => (
+            <Input label="New Password" value={value} onChangeText={onChange} onBlur={onBlur} error={errors.password?.message} secureTextEntry />
+          )} />
+          <Controller control={control} name="confirm" render={({ field: { onChange, value, onBlur } }) => (
+            <Input label="Confirm Password" value={value} onChangeText={onChange} onBlur={onBlur} error={errors.confirm?.message} secureTextEntry />
+          )} />
         </View>
 
-        {step === 'otp' ? (
-          <View style={{ alignItems: 'center', gap: 24 }}>
-            <OtpInput value={otp} onChange={setOtp} length={6} disabled={validating} />
-            {successFlash && (
-              <Animated.Text style={{ color: '#22C55E', fontWeight: '700', opacity: flashOpacity }}>
-                Code verified!
-              </Animated.Text>
-            )}
-            {validating ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <ActivityIndicator color="#9333EA" />
-                <Text style={{ color: '#7C6FAD' }}>Verifying...</Text>
-              </View>
-            ) : (
-              <Button title="Verify Code" onPress={() => validateOtp(otp)} disabled={otp.length < 6} />
-            )}
-            <View style={{ alignItems: 'center', gap: 6 }}>
-              <Text style={{ color: '#7C6FAD', fontSize: 14 }}>Didn't receive the code?</Text>
-              <TouchableOpacity onPress={handleResend} disabled={resending || cooldown > 0}>
-                <Text style={{ color: cooldown > 0 ? '#4A3F6B' : '#9333EA', fontWeight: '700', fontSize: 14 }}>
-                  {resending ? 'Sending...' : cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend code'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        ) : (
-          <View style={{ gap: 16 }}>
-            <Controller control={control} name="password"
-              render={({ field: { onChange, value } }) => (
-                <Input label="New Password" value={value} onChangeText={onChange} placeholder="Min 8 characters"
-                  secureTextEntry error={errors.password?.message}
-                  icon={<Ionicons name="lock-closed-outline" size={18} color="#7C6FAD" />} />
-              )} />
-            <Controller control={control} name="confirm"
-              render={({ field: { onChange, value } }) => (
-                <Input label="Confirm Password" value={value} onChangeText={onChange} placeholder="Repeat password"
-                  secureTextEntry error={errors.confirm?.message}
-                  icon={<Ionicons name="lock-closed-outline" size={18} color="#7C6FAD" />} />
-              )} />
-            <Button title="Reset Password" onPress={handleSubmit(handleReset)} loading={loading} />
-          </View>
-        )}
+        <Button title="Reset Password" onPress={handleSubmit(onSubmit)} loading={loading} />
       </View>
     </KeyboardAvoidingView>
   )

@@ -56,7 +56,7 @@ export default function PostDetailScreen() {
       <ScrollView showsVerticalScrollIndicator={false}>
         <PostCard
           post={post}
-          onLike={() => likeMutation.mutate({ liked: post.is_liked })}
+          onLike={() => likeMutation.mutate({ liked: post.is_liked ?? false })}
           onSave={() => {}}
           onComment={() => {}}
           onProfilePress={(username) => router.push(`/(main)/profile/${username}`)}

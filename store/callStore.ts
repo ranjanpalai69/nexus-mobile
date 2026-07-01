@@ -9,8 +9,8 @@ interface CallState {
   callType: CallType | null
   conversationId: string | null
   remoteUser: Profile | null
-  localStream: MediaStream | null
-  remoteStream: MediaStream | null
+  localStream: any | null
+  remoteStream: any | null
   isMuted: boolean
   isCameraOff: boolean
   isSpeakerOn: boolean
@@ -18,8 +18,8 @@ interface CallState {
   setIncomingCall: (caller: Profile, conversationId: string, callType: CallType) => void
   setOutgoingCall: (callee: Profile, conversationId: string, callType: CallType) => void
   setCallActive: () => void
-  setLocalStream: (stream: MediaStream | null) => void
-  setRemoteStream: (stream: MediaStream | null) => void
+  setLocalStream: (stream: any | null) => void
+  setRemoteStream: (stream: any | null) => void
   toggleMute: () => void
   toggleCamera: () => void
   toggleSpeaker: () => void

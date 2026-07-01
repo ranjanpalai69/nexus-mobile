@@ -1,105 +1,104 @@
-import { useState, useCallback } from 'react'
+import React, { useState, useCallback } from 'react'
 import { View, Text, TextInput, TouchableOpacity } from 'react-native'
 import { FlashList } from '@shopify/flash-list'
 import { useQuery } from '@tanstack/react-query'
 import { router } from 'expo-router'
-import { Ionicons } from '@expo/vector-icons'
-import { Image } from 'expo-image'
-import { searchUsers, fetchSuggestions } from '@/lib/api/profile'
+import { ScreenContainer } from '@/components/ui/ScreenContainer'
 import { Avatar } from '@/components/ui/Avatar'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
+import { searchUsers, fetchSuggestions } from '@/lib/api/profile'
 import type { Profile } from '@/types/database'
+import { formatCount } from '@/lib/utils/helpers'
+
+function UserRow({ profile, onPress }: { profile: Profile; onPress: () => void }) {
+  return (
+    <TouchableOpacity onPress={onPress} className="flex-row items-center px-4 py-3 gap-3" activeOpacity={0.7}>
+      <Avatar uri={profile.avatar_url} name={profile.full_name} username={profile.username} size={48} />
+      <View className="flex-1">
+        <View className="flex-row items-center gap-1">
+          <Text className="text-white font-semibold text-sm">{profile.full_name ?? profile.username}</Text>
+          {profile.is_verified && <Text className="text-purple-400 text-xs">?</Text>}
+        </View>
+        <Text className="text-gray-500 text-xs">@{profile.username} · {formatCount(profile.followers_count)} followers</Text>
+      </View>
+    </TouchableOpacity>
+  )
+}
 
 export default function ExploreScreen() {
   const [query, setQuery] = useState('')
-  const [active, setActive] = useState('')
+  const [debouncedQuery, setDebouncedQuery] = useState('')
 
-  const { data: suggestions, isLoading: loadingSuggestions } = useQuery({
+  const { data: suggestions = [], isLoading: suggestionsLoading } = useQuery({
     queryKey: ['suggestions'],
     queryFn: fetchSuggestions,
-    enabled: !active,
+    staleTime: 60_000,
   })
 
-  const { data: results, isLoading: loadingSearch } = useQuery({
-    queryKey: ['search', active],
-    queryFn: () => searchUsers(active),
-    enabled: active.length >= 2,
+  const { data: searchResults = [], isLoading: searchLoading } = useQuery({
+    queryKey: ['search', debouncedQuery],
+    queryFn: () => searchUsers(debouncedQuery),
+    enabled: debouncedQuery.length >= 2,
   })
 
-  const isLoading = active.length >= 2 ? loadingSearch : loadingSuggestions
-  const items: Profile[] = active.length >= 2 ? (results ?? []) : (suggestions ?? [])
+  React.useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(query), 400)
+    return () => clearTimeout(timer)
+  }, [query])
+
+  const isSearching = debouncedQuery.length >= 2
+  const displayData = isSearching ? searchResults : suggestions
+  const isLoading = isSearching ? searchLoading : suggestionsLoading
 
   const renderUser = useCallback(({ item }: { item: Profile }) => (
-    <TouchableOpacity
-      style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, gap: 12 }}
-      onPress={() => router.push(`/(main)/profile/${item.username}`)}
-      activeOpacity={0.7}
-    >
-      <Avatar uri={item.avatar_url} name={item.full_name} username={item.username} size={48} />
-      <View style={{ flex: 1 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <Text style={{ color: '#F9FAFB', fontWeight: '600', fontSize: 15 }}>{item.full_name || item.username}</Text>
-          {item.is_verified && (
-            <View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: '#9333EA', alignItems: 'center', justifyContent: 'center' }}>
-              <Text style={{ color: '#fff', fontSize: 9, fontWeight: '700' }}>âœ“</Text>
-            </View>
-          )}
-        </View>
-        <Text style={{ color: '#6B7280', fontSize: 13 }}>@{item.username}</Text>
-        {item.bio && <Text style={{ color: '#9CA3AF', fontSize: 12, marginTop: 2 }} numberOfLines={1}>{item.bio}</Text>}
-      </View>
-      <Ionicons name="chevron-forward" size={16} color="#4A3F6B" />
-    </TouchableOpacity>
+    <UserRow profile={item} onPress={() => router.push(`/(main)/profile/${item.username}`)} />
   ), [])
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#0F0A1E' }}>
-      {/* Header */}
-      <View style={{ paddingTop: 56, paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: '#2A1F45' }}>
-        <Text style={{ color: '#F9FAFB', fontSize: 20, fontWeight: '700', marginBottom: 12 }}>Explore</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#1A1030', borderRadius: 12, paddingHorizontal: 12, gap: 8 }}>
-          <Ionicons name="search" size={18} color="#6B7280" />
+    <ScreenContainer edges={['top']}>
+      <View className="px-4 pt-2 pb-3">
+        <Text className="text-white font-bold text-2xl mb-3">Explore</Text>
+        <View className="flex-row items-center bg-dark-card border border-dark-border rounded-xl px-3 gap-2">
+          <Text className="text-gray-500 text-lg">??</Text>
           <TextInput
-            style={{ flex: 1, color: '#F9FAFB', fontSize: 15, paddingVertical: 12 }}
-            placeholder="Search people..."
-            placeholderTextColor="#4A3F6B"
             value={query}
-            onChangeText={(t) => { setQuery(t); if (t.length >= 2) setActive(t); else setActive('') }}
+            onChangeText={setQuery}
+            placeholder="Search people..."
+            placeholderTextColor="#6B7280"
+            className="flex-1 text-white text-base py-3"
             autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="search"
           />
           {query.length > 0 && (
-            <TouchableOpacity onPress={() => { setQuery(''); setActive('') }}>
-              <Ionicons name="close-circle" size={18} color="#6B7280" />
+            <TouchableOpacity onPress={() => { setQuery(''); setDebouncedQuery('') }}>
+              <Text className="text-gray-500 text-lg">?</Text>
             </TouchableOpacity>
           )}
         </View>
       </View>
 
+      {!isSearching && (
+        <Text className="text-gray-400 text-sm font-semibold px-4 pb-2">Suggested for you</Text>
+      )}
+
       {isLoading ? (
-        <LoadingSpinner />
+        <LoadingSpinner size="small" />
       ) : (
         <FlashList
-          data={items}
-          renderItem={renderUser}
-          estimatedItemSize={72}
+          data={displayData}
           keyExtractor={(item) => item.id}
-          ListHeaderComponent={
-            items.length > 0 ? (
-              <Text style={{ color: '#6B7280', fontSize: 12, fontWeight: '600', paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                {active.length >= 2 ? 'Results' : 'Suggested'}
-              </Text>
-            ) : null
-          }
+          renderItem={renderUser}
+          estimatedItemSize={70}
           ListEmptyComponent={
-            <View style={{ alignItems: 'center', paddingTop: 60 }}>
-              <Text style={{ color: '#4A3F6B', fontSize: 15 }}>
-                {active.length >= 2 ? 'No results found' : 'No suggestions yet'}
+            <View className="items-center pt-16">
+              <Text className="text-gray-500 text-base">
+                {isSearching ? `No results for "${debouncedQuery}"` : 'No suggestions right now'}
               </Text>
             </View>
           }
-          showsVerticalScrollIndicator={false}
         />
       )}
-    </View>
+    </ScreenContainer>
   )
 }

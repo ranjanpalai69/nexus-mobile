@@ -1,115 +1,134 @@
-import { useState } from 'react'
-import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native'
+import React, { useState } from 'react'
+import { View, Text, TouchableOpacity, Alert, ScrollView, KeyboardAvoidingView, Platform } from 'react-native'
 import { router } from 'expo-router'
 import { useForm, Controller } from 'react-hook-form'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Ionicons } from '@expo/vector-icons'
-import Toast from 'react-native-toast-message'
-import { updateProfile } from '@/lib/api/profile'
-import { useAuthStore } from '@/store/authStore'
-import { supabase } from '@/lib/supabase/client'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import * as ImagePicker from 'expo-image-picker'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
-import type { Profile } from '@/types/database'
+import { Avatar } from '@/components/ui/Avatar'
+import { useAuthStore } from '@/store/authStore'
+import { updateProfile } from '@/lib/api/profile'
+import { getPresignedUrl } from '@/lib/api/posts'
+import { supabase } from '@/lib/supabase/client'
 
-type Form = {
-  full_name: string
-  bio: string
-  website: string
-  location: string
-}
+const schema = z.object({
+  full_name: z.string().max(100).optional(),
+  username: z.string().min(3).max(30).regex(/^[a-zA-Z0-9_]+$/).optional(),
+  bio: z.string().max(200).optional(),
+  website: z.string().url().or(z.literal('')).optional(),
+  location: z.string().max(100).optional(),
+})
+type FormData = z.infer<typeof schema>
 
 export default function SettingsScreen() {
-  const qc = useQueryClient()
-  const { user, logout, updateProfile: updateStore } = useAuthStore()
+  const user = useAuthStore((s) => s.user)
+  const { updateProfile: updateStore, logout } = useAuthStore()
+  const [loading, setLoading] = useState(false)
+  const [avatarUri, setAvatarUri] = useState<string | null>(null)
 
-  const { control, handleSubmit, formState: { isDirty } } = useForm<Form>({
+  const { control, handleSubmit, formState: { errors } } = useForm<FormData>({
+    resolver: zodResolver(schema),
     defaultValues: {
       full_name: user?.full_name ?? '',
+      username: user?.username ?? '',
       bio: user?.bio ?? '',
       website: user?.website ?? '',
       location: user?.location ?? '',
     },
   })
 
-  const mutation = useMutation({
-    mutationFn: (data: Partial<Profile>) => updateProfile(data),
-    onSuccess: (updated) => {
-      updateStore(updated)
-      qc.invalidateQueries({ queryKey: ['profile', 'me'] })
-      Toast.show({ type: 'success', text1: 'Profile updated!' })
-    },
-    onError: () => Toast.show({ type: 'error', text1: 'Failed to update profile' }),
-  })
+  async function pickAvatar() {
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [1, 1], quality: 0.8 })
+    if (!result.canceled && result.assets[0]) {
+      setAvatarUri(result.assets[0].uri)
+    }
+  }
 
-  const handleLogout = () => {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+  async function onSubmit(data: FormData) {
+    setLoading(true)
+    try {
+      let avatar_url = user?.avatar_url
+      if (avatarUri) {
+        const { url, key } = await getPresignedUrl(`avatar-${user?.id}-${Date.now()}.jpg`, 'image/jpeg')
+        const blob = await fetch(avatarUri).then((r) => r.blob())
+        await fetch(url, { method: 'PUT', body: blob, headers: { 'Content-Type': 'image/jpeg' } })
+        avatar_url = key
+      }
+      const updated = await updateProfile({ ...data, avatar_url })
+      updateStore(updated)
+      Alert.alert('Success', 'Profile updated!')
+    } catch (err) {
+      Alert.alert('Error', err instanceof Error ? err.message : 'Update failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleLogout() {
+    Alert.alert('Logout', 'Are you sure?', [
       { text: 'Cancel', style: 'cancel' },
       {
-        text: 'Sign Out', style: 'destructive',
-        onPress: async () => {
+        text: 'Logout', style: 'destructive', onPress: async () => {
           await supabase.auth.signOut()
           logout()
           router.replace('/(auth)/login')
-        },
+        }
       },
     ])
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#0F0A1E' }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', paddingTop: 56, paddingBottom: 16, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: '#2A1F45' }}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#9CA3AF" />
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#0F0A1E' }} edges={['top']}>
+      <View className="flex-row items-center px-4 py-3 border-b border-dark-border">
+        <TouchableOpacity onPress={() => router.back()} className="mr-3">
+          <Text className="text-purple-400 text-base">? Back</Text>
         </TouchableOpacity>
-        <Text style={{ color: '#F9FAFB', fontWeight: '700', fontSize: 18, marginLeft: 12 }}>Edit Profile</Text>
+        <Text className="text-white font-semibold text-lg">Edit Profile</Text>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 20, gap: 16 }} showsVerticalScrollIndicator={false}>
-        <Controller control={control} name="full_name"
-          render={({ field: { onChange, value } }) => (
-            <Input label="Full Name" value={value} onChangeText={onChange} placeholder="Your name"
-              icon={<Ionicons name="person-outline" size={18} color="#7C6FAD" />} />
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} className="flex-1">
+        <ScrollView contentContainerStyle={{ padding: 16 }} keyboardShouldPersistTaps="handled">
+          <View className="items-center mb-6">
+            <TouchableOpacity onPress={pickAvatar}>
+              <Avatar
+                uri={avatarUri ?? user?.avatar_url}
+                name={user?.full_name ?? null}
+                username={user?.username ?? ''}
+                size={88}
+              />
+              <View className="absolute bottom-0 right-0 bg-purple-600 rounded-full w-7 h-7 items-center justify-center">
+                <Text className="text-white text-xs">??</Text>
+              </View>
+            </TouchableOpacity>
+            <Text className="text-gray-500 text-xs mt-2">Tap to change photo</Text>
+          </View>
+
+          <Controller control={control} name="full_name" render={({ field: { onChange, value, onBlur } }) => (
+            <Input label="Full Name" value={value} onChangeText={onChange} onBlur={onBlur} error={errors.full_name?.message} />
+          )} />
+          <Controller control={control} name="username" render={({ field: { onChange, value, onBlur } }) => (
+            <Input label="Username" value={value} onChangeText={onChange} onBlur={onBlur} error={errors.username?.message} autoCapitalize="none" autoCorrect={false} />
+          )} />
+          <Controller control={control} name="bio" render={({ field: { onChange, value, onBlur } }) => (
+            <Input label="Bio" value={value} onChangeText={onChange} onBlur={onBlur} error={errors.bio?.message} multiline numberOfLines={3} />
+          )} />
+          <Controller control={control} name="website" render={({ field: { onChange, value, onBlur } }) => (
+            <Input label="Website" value={value} onChangeText={onChange} onBlur={onBlur} error={errors.website?.message} keyboardType="url" autoCapitalize="none" />
+          )} />
+          <Controller control={control} name="location" render={({ field: { onChange, value, onBlur } }) => (
+            <Input label="Location" value={value} onChangeText={onChange} onBlur={onBlur} error={errors.location?.message} />
           )} />
 
-        <Controller control={control} name="bio"
-          render={({ field: { onChange, value } }) => (
-            <Input label="Bio" value={value} onChangeText={onChange} placeholder="Tell people about yourself"
-              multiline numberOfLines={3}
-              icon={<Ionicons name="document-text-outline" size={18} color="#7C6FAD" />} />
-          )} />
+          <Button title="Save Changes" onPress={handleSubmit(onSubmit)} loading={loading} style={{ marginTop: 8 }} />
 
-        <Controller control={control} name="website"
-          render={({ field: { onChange, value } }) => (
-            <Input label="Website" value={value} onChangeText={onChange} placeholder="https://yoursite.com"
-              keyboardType="url"
-              icon={<Ionicons name="link-outline" size={18} color="#7C6FAD" />} />
-          )} />
-
-        <Controller control={control} name="location"
-          render={({ field: { onChange, value } }) => (
-            <Input label="Location" value={value} onChangeText={onChange} placeholder="Where you're from"
-              icon={<Ionicons name="location-outline" size={18} color="#7C6FAD" />} />
-          )} />
-
-        <Button
-          title="Save Changes"
-          onPress={handleSubmit((data) => mutation.mutate(data))}
-          loading={mutation.isPending}
-          disabled={!isDirty}
-          style={{ marginTop: 8 }}
-        />
-
-        <View style={{ height: 1, backgroundColor: '#2A1F45', marginVertical: 16 }} />
-
-        <TouchableOpacity
-          onPress={handleLogout}
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, backgroundColor: '#1A1030', borderRadius: 12 }}
-        >
-          <Ionicons name="log-out-outline" size={20} color="#EF4444" />
-          <Text style={{ color: '#EF4444', fontSize: 15, fontWeight: '600' }}>Sign Out</Text>
-        </TouchableOpacity>
-      </ScrollView>
-    </View>
+          <View className="mt-8 pt-6 border-t border-dark-border">
+            <Button title="Sign Out" variant="outline" onPress={handleLogout} />
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   )
 }

@@ -1,142 +1,192 @@
-import { useCallback, useRef, useState, useEffect } from 'react'
-import { View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native'
+﻿import React, { useState, useRef, useEffect, useCallback } from 'react'
+import { View, Text, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, Alert } from 'react-native'
 import { FlashList } from '@shopify/flash-list'
-import { router, useLocalSearchParams } from 'expo-router'
-import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Ionicons } from '@expo/vector-icons'
-import { fetchMessages } from '@/lib/api/messages'
-import { useChatStore } from '@/store/chatStore'
-import { useAuthStore } from '@/store/authStore'
-import { getSocket } from '@/lib/socket'
-import { useSocket } from '@/hooks/useSocket'
-import { useCall } from '@/hooks/useCall'
+import { useLocalSearchParams, router } from 'expo-router'
+import { useQuery } from '@tanstack/react-query'
+import { SafeAreaView } from 'react-native-safe-area-context'
+import * as ImagePicker from 'expo-image-picker'
 import { MessageBubble } from '@/components/messages/MessageBubble'
 import { Avatar } from '@/components/ui/Avatar'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
-import type { MessageWithSender, Profile } from '@/types/database'
+import { fetchMessages } from '@/lib/api/messages'
+import { getSocket } from '@/lib/socket'
+import { useChatStore } from '@/store/chatStore'
+import { useAuthStore } from '@/store/authStore'
+import { useCall } from '@/hooks/useCall'
+import type { MessageWithSender } from '@/types/database'
+import { getPresignedUrl } from '@/lib/api/posts'
+
+let typingTimer: ReturnType<typeof setTimeout>
 
 export default function ConversationScreen() {
-  useSocket()
   const { id } = useLocalSearchParams<{ id: string }>()
   const user = useAuthStore((s) => s.user)
-  const qc = useQueryClient()
-  const [input, setInput] = useState('')
-  const [typing, setTyping] = useState(false)
-  const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const { messages, setMessages, addMessage, setActiveConversation, clearConversationUnread, conversations } = useChatStore()
+  const { messages: storeMessages, setMessages, addMessage, setTyping, typingUsers, clearConversationUnread, conversations } = useChatStore()
   const { startCall } = useCall()
+  const [text, setText] = useState('')
+  const flashRef = useRef<FlashList<MessageWithSender>>(null)
 
-  const conv = conversations.find((c) => c.id === id)
-  const other = conv?.participants?.find((p: Profile) => p.id !== user?.id)
+  const conversation = conversations.find((c) => c.id === id)
+  const otherParticipant = conversation?.participants.find((p) => p.user_id !== user?.id)
+  const otherUser = otherParticipant?.profile
 
-  const { data, isLoading, fetchNextPage, hasNextPage } = useInfiniteQuery({
+  const messages = storeMessages[id] ?? []
+  const isTyping = typingUsers.some((t) => t.conversationId === id && t.userId !== user?.id)
+
+  const { isLoading } = useQuery({
     queryKey: ['messages', id],
-    queryFn: ({ pageParam = 0 }) => fetchMessages(id, pageParam as number),
-    getNextPageParam: (last, all) => (last.length < 20 ? undefined : all.length),
-    initialPageParam: 0,
-  })
-
-  useEffect(() => {
-    setActiveConversation(id)
-    clearConversationUnread(id)
-    return () => setActiveConversation(null)
-  }, [id])
-
-  useEffect(() => {
-    const all = data?.pages.flat() ?? []
-    if (all.length > 0) setMessages(id, all)
-  }, [data])
-
-  const localMessages = messages[id] ?? []
-
-  const sendMutation = useMutation({
-    mutationFn: async (content: string) => {
-      const socket = getSocket(user!.id)
-      socket.emit('message:send', { conversationId: id, content, to: other?.id })
+    queryFn: async () => {
+      const data = await fetchMessages(id)
+      setMessages(id, data.reverse())
+      return data
     },
+    enabled: !!id,
   })
 
-  const handleSend = () => {
-    const text = input.trim()
-    if (!text || !user) return
-    setInput('')
-    sendMutation.mutate(text)
-  }
-
-  const handleTyping = (text: string) => {
-    setInput(text)
-    if (!typing) {
-      setTyping(true)
-      getSocket(user!.id).emit('typing:start', { conversationId: id, to: other?.id })
+  useEffect(() => {
+    if (!user?.id) return
+    const socket = getSocket(user.id)
+    socket.emit('conversation:join', { conversationId: id })
+    clearConversationUnread(id)
+    return () => {
+      socket.emit('conversation:leave', { conversationId: id })
     }
-    if (typingTimer.current) clearTimeout(typingTimer.current)
-    typingTimer.current = setTimeout(() => {
-      setTyping(false)
-      getSocket(user!.id).emit('typing:stop', { conversationId: id, to: other?.id })
+  }, [id, user?.id])
+
+  useEffect(() => {
+    if (messages.length > 0) {
+      setTimeout(() => flashRef.current?.scrollToEnd({ animated: true }), 100)
+    }
+  }, [messages.length])
+
+  function handleTextChange(val: string) {
+    setText(val)
+    if (!user?.id) return
+    const socket = getSocket(user.id)
+    socket.emit('typing:start', { conversationId: id })
+    clearTimeout(typingTimer)
+    typingTimer = setTimeout(() => {
+      socket.emit('typing:stop', { conversationId: id })
     }, 1500)
   }
 
-  const isTyping = useChatStore((s) => s.typingUsers.some((t) => t.conversationId === id && t.userId === other?.id))
+  async function sendMessage() {
+    if (!text.trim() || !user?.id) return
+    const socket = getSocket(user.id)
+    const tempId = `temp-${Date.now()}`
+    const tempMsg: MessageWithSender = {
+      id: tempId,
+      conversation_id: id,
+      sender_id: user.id,
+      content: text.trim(),
+      type: 'text',
+      media_url: null,
+      file_name: null,
+      file_size: null,
+      duration_seconds: null,
+      is_deleted: false,
+      reply_to_id: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      sender: user as MessageWithSender['sender'],
+    }
+    addMessage(id, tempMsg)
+    socket.emit('message:send', { conversationId: id, content: text.trim(), type: 'text' })
+    setText('')
+    socket.emit('typing:stop', { conversationId: id })
+  }
 
-  const renderItem = useCallback(({ item, index }: { item: MessageWithSender; index: number }) => {
-    const prev = localMessages[index - 1]
-    const showTime = !prev || new Date(item.created_at).getTime() - new Date(prev.created_at).getTime() > 5 * 60 * 1000
-    return <MessageBubble message={item} isOwn={item.sender_id === user?.id} showTime={showTime} />
-  }, [localMessages, user?.id])
+  async function sendImage() {
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8 })
+    if (result.canceled || !result.assets[0] || !user?.id) return
+    try {
+      const { url, key } = await getPresignedUrl(`msg-${Date.now()}.jpg`, 'image/jpeg')
+      const blob = await fetch(result.assets[0].uri).then((r) => r.blob())
+      await fetch(url, { method: 'PUT', body: blob, headers: { 'Content-Type': 'image/jpeg' } })
+      const socket = getSocket(user.id)
+      socket.emit('message:send', { conversationId: id, type: 'image', media_url: key })
+    } catch {
+      Alert.alert('Error', 'Failed to send image')
+    }
+  }
 
-  if (isLoading) return <LoadingSpinner />
+  function handleCall(type: 'audio' | 'video') {
+    if (!otherUser) return
+    startCall(otherUser.id, id, type)
+  }
+
+  const renderMessage = useCallback(({ item }: { item: MessageWithSender }) => (
+    <MessageBubble message={item} isOwn={item.sender_id === user?.id} />
+  ), [user?.id])
+
+  if (isLoading && messages.length === 0) return <LoadingSpinner />
+
+  const headerName = otherUser?.full_name ?? otherUser?.username ?? conversation?.name ?? 'Chat'
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: '#0F0A1E' }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      {/* Header */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', paddingTop: 56, paddingBottom: 12, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: '#2A1F45', gap: 10 }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#0F0A1E' }} edges={['top']}>
+      <View className="flex-row items-center px-4 py-3 border-b border-dark-border gap-3">
         <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#9CA3AF" />
+          <Text className="text-purple-400 text-base mr-1">←</Text>
         </TouchableOpacity>
-        <Avatar uri={other?.avatar_url} name={other?.full_name} username={other?.username ?? ''} size={38} />
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: '#F9FAFB', fontWeight: '700', fontSize: 15 }}>{other?.full_name || other?.username}</Text>
-          {isTyping && <Text style={{ color: '#9333EA', fontSize: 12 }}>typing...</Text>}
+        {otherUser && (
+          <TouchableOpacity onPress={() => router.push(`/(main)/profile/${otherUser.username}`)} className="flex-row items-center gap-2 flex-1">
+            <Avatar uri={otherUser.avatar_url} name={otherUser.full_name} username={otherUser.username} size={36} />
+            <View>
+              <Text className="text-white font-semibold text-sm">{headerName}</Text>
+            </View>
+          </TouchableOpacity>
+        )}
+        <View className="flex-row gap-2">
+          <TouchableOpacity onPress={() => handleCall('audio')} className="w-8 h-8 items-center justify-center">
+            <Text className="text-xl">📞</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => handleCall('video')} className="w-8 h-8 items-center justify-center">
+            <Text className="text-xl">📹</Text>
+          </TouchableOpacity>
         </View>
-        <TouchableOpacity onPress={() => other && startCall(other.id, id, 'audio')} style={{ padding: 8 }}>
-          <Ionicons name="call-outline" size={22} color="#9CA3AF" />
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => other && startCall(other.id, id, 'video')} style={{ padding: 8 }}>
-          <Ionicons name="videocam-outline" size={22} color="#9CA3AF" />
-        </TouchableOpacity>
       </View>
 
-      <FlashList
-        data={localMessages}
-        renderItem={renderItem}
-        estimatedItemSize={60}
-        keyExtractor={(item) => item.id}
-        inverted
-        onEndReached={() => { if (hasNextPage) fetchNextPage() }}
-        onEndReachedThreshold={0.3}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingVertical: 12 }}
-      />
-
-      {/* Input */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', padding: 12, borderTopWidth: 1, borderTopColor: '#2A1F45', gap: 10 }}>
-        <TextInput
-          style={{ flex: 1, backgroundColor: '#1A1030', borderRadius: 22, paddingHorizontal: 16, paddingVertical: 10, color: '#F9FAFB', fontSize: 15, maxHeight: 100 }}
-          placeholder="Message..."
-          placeholderTextColor="#4A3F6B"
-          value={input}
-          onChangeText={handleTyping}
-          multiline
-          returnKeyType="default"
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} className="flex-1">
+        <FlashList
+          ref={flashRef}
+          data={messages}
+          keyExtractor={(item) => item.id}
+          renderItem={renderMessage}
+          estimatedItemSize={60}
+          contentContainerStyle={{ paddingVertical: 12 }}
+          ListFooterComponent={
+            isTyping ? (
+              <View className="px-4 py-2">
+                <Text className="text-gray-500 text-sm italic">{otherUser?.username} is typing...</Text>
+              </View>
+            ) : null
+          }
         />
-        <TouchableOpacity
-          onPress={handleSend}
-          disabled={!input.trim()}
-          style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: input.trim() ? '#9333EA' : '#2A1F45', alignItems: 'center', justifyContent: 'center' }}
-        >
-          <Ionicons name="send" size={18} color={input.trim() ? '#fff' : '#4A3F6B'} />
-        </TouchableOpacity>
-      </View>
-    </KeyboardAvoidingView>
+        <View className="flex-row items-end px-3 py-3 gap-2 border-t border-dark-border">
+          <TouchableOpacity onPress={sendImage} className="w-9 h-9 items-center justify-center">
+            <Text className="text-xl">🖼️</Text>
+          </TouchableOpacity>
+          <TextInput
+            value={text}
+            onChangeText={handleTextChange}
+            placeholder="Message..."
+            placeholderTextColor="#6B7280"
+            className="flex-1 text-white text-sm bg-dark-card rounded-2xl px-4 py-2.5 max-h-28"
+            multiline
+            onSubmitEditing={sendMessage}
+            blurOnSubmit={false}
+          />
+          <TouchableOpacity
+            onPress={sendMessage}
+            disabled={!text.trim()}
+            className="w-9 h-9 items-center justify-center bg-purple-600 rounded-full"
+            style={{ opacity: text.trim() ? 1 : 0.4 }}
+          >
+            <Text className="text-white text-sm">▶</Text>
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   )
 }

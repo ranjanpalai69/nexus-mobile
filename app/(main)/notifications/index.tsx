@@ -1,52 +1,68 @@
-import { useEffect } from 'react'
-import { View, Text, RefreshControl } from 'react-native'
+import React, { useCallback } from 'react'
+import { View, Text, TouchableOpacity, RefreshControl } from 'react-native'
 import { FlashList } from '@shopify/flash-list'
 import { useQuery } from '@tanstack/react-query'
-import { fetchNotifications } from '@/lib/api/profile'
-import { useNotificationStore } from '@/store/notificationStore'
+import { router } from 'expo-router'
+import { ScreenContainer } from '@/components/ui/ScreenContainer'
 import { NotificationItem } from '@/components/notifications/NotificationItem'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
+import { fetchNotifications } from '@/lib/api/profile'
+import { useNotificationStore } from '@/store/notificationStore'
 import type { NotificationWithActor } from '@/types/database'
 
 export default function NotificationsScreen() {
-  const { notifications, setNotifications, markAllRead } = useNotificationStore()
+  const { setNotifications, markAllRead, notifications } = useNotificationStore()
 
-  const { data, isLoading, refetch, isRefetching } = useQuery({
+  const { isLoading, refetch, isRefetching } = useQuery({
     queryKey: ['notifications'],
-    queryFn: fetchNotifications,
+    queryFn: async () => {
+      const data = await fetchNotifications()
+      setNotifications(data)
+      return data
+    },
   })
 
-  useEffect(() => {
-    if (data) {
-      setNotifications(data)
-      markAllRead()
+  function handleNotificationPress(notification: NotificationWithActor) {
+    if (notification.type === 'follow') {
+      if (notification.actor?.username) {
+        router.push(`/(main)/profile/${notification.actor.username}`)
+      }
+    } else if (notification.reference_type === 'post' && notification.reference_id) {
+      router.push(`/(main)/feed/${notification.reference_id}`)
+    } else if (notification.reference_type === 'conversation' && notification.reference_id) {
+      router.push(`/(main)/messages/${notification.reference_id}`)
     }
-  }, [data])
+  }
 
-  if (isLoading) return <LoadingSpinner />
+  const renderNotification = useCallback(({ item }: { item: NotificationWithActor }) => (
+    <NotificationItem notification={item} onPress={handleNotificationPress} />
+  ), [])
+
+  if (isLoading && notifications.length === 0) return <LoadingSpinner />
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#0F0A1E' }}>
-      <View style={{ paddingTop: 56, paddingHorizontal: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#2A1F45' }}>
-        <Text style={{ color: '#F9FAFB', fontSize: 22, fontWeight: '700' }}>Notifications</Text>
+    <ScreenContainer edges={['top']}>
+      <View className="flex-row items-center justify-between px-4 py-3 border-b border-dark-border">
+        <Text className="text-white font-bold text-xl">Notifications</Text>
+        {notifications.some((n) => !n.is_read) && (
+          <TouchableOpacity onPress={markAllRead}>
+            <Text className="text-purple-400 text-sm">Mark all read</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <FlashList
         data={notifications}
-        renderItem={({ item }: { item: NotificationWithActor }) => <NotificationItem notification={item} />}
-        estimatedItemSize={72}
         keyExtractor={(item) => item.id}
+        renderItem={renderNotification}
+        estimatedItemSize={72}
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor="#9333EA" />}
-        ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: '#1A1030' }} />}
         ListEmptyComponent={
-          <View style={{ alignItems: 'center', paddingTop: 80 }}>
-            <Text style={{ color: '#4A3F6B', fontSize: 32, marginBottom: 12 }}>🔔</Text>
-            <Text style={{ color: '#6B7280', fontSize: 16, fontWeight: '600' }}>No notifications</Text>
-            <Text style={{ color: '#4A3F6B', fontSize: 14, marginTop: 4 }}>We'll notify you when something happens</Text>
+          <View className="flex-1 items-center pt-20">
+            <Text className="text-gray-500 text-base">No notifications yet</Text>
           </View>
         }
-        showsVerticalScrollIndicator={false}
       />
-    </View>
+    </ScreenContainer>
   )
 }
