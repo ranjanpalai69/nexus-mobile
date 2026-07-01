@@ -1,0 +1,78 @@
+{
+  "expo": {
+    "name": "Nexus",
+    "slug": "nexus-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0F0A1E"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.nexus.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Nexus uses your camera for video calls and story uploads.",
+        "NSMicrophoneUsageDescription": "Nexus uses your microphone for audio and video calls.",
+        "NSPhotoLibraryUsageDescription": "Nexus uses your photo library to share images and stories."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0F0A1E"
+      },
+      "package": "com.nexus.app",
+      "permissions": [
+        "CAMERA",
+        "RECORD_AUDIO",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE",
+        "POST_NOTIFICATIONS"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#9333EA",
+          "sounds": ["./assets/notification.wav"]
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Nexus needs access to your photos to share images."
+        }
+      ],
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Nexus needs microphone access for voice messages and calls."
+        }
+      ],
+      "react-native-webrtc"
+    ],
+    "scheme": "nexus",
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "nexus-mobile"
+      }
+    }
+  }
+}

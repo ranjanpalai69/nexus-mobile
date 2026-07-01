@@ -1,0 +1,129 @@
+﻿import { create } from 'zustand'
+import type { ConversationWithDetails, MessageWithSender } from '@/types/database'
+
+interface TypingUser {
+  userId: string
+  conversationId: string
+}
+
+interface ChatState {
+  conversations: ConversationWithDetails[]
+  activeConversationId: string | null
+  messages: Record<string, MessageWithSender[]>
+  typingUsers: TypingUser[]
+  onlineUserIds: Set<string>
+
+  setConversations: (convs: ConversationWithDetails[]) => void
+  addConversation: (conv: ConversationWithDetails) => void
+  updateConversation: (id: string, updates: Partial<ConversationWithDetails>) => void
+  updateOrAddConversation: (id: string, updates: Partial<ConversationWithDetails>) => void
+  clearConversationUnread: (id: string) => void
+  incrementConversationUnread: (id: string) => void
+  setActiveConversation: (id: string | null) => void
+  setMessages: (conversationId: string, messages: MessageWithSender[]) => void
+  addMessage: (conversationId: string, message: MessageWithSender) => void
+  updateMessage: (conversationId: string, messageId: string, updates: Partial<MessageWithSender>) => void
+  replaceTempMessage: (conversationId: string, tempId: string, message: MessageWithSender) => void
+  setTyping: (userId: string, conversationId: string, isTyping: boolean) => void
+  setUserOnline: (userId: string, online: boolean) => void
+  isUserOnline: (userId: string) => boolean
+}
+
+export const useChatStore = create<ChatState>((set, get) => ({
+  conversations: [],
+  activeConversationId: null,
+  messages: {},
+  typingUsers: [],
+  onlineUserIds: new Set(),
+
+  setConversations: (conversations) => set({ conversations }),
+
+  addConversation: (conv) =>
+    set((state) => ({
+      conversations: [conv, ...state.conversations.filter((c) => c.id !== conv.id)],
+    })),
+
+  updateConversation: (id, updates) =>
+    set((state) => ({
+      conversations: state.conversations.map((c) => (c.id === id ? { ...c, ...updates } : c)),
+    })),
+
+  updateOrAddConversation: (id, updates) =>
+    set((state) => {
+      const exists = state.conversations.some((c) => c.id === id)
+      if (exists) {
+        return {
+          conversations: state.conversations.map((c) => (c.id === id ? { ...c, ...updates } : c)),
+        }
+      }
+      return state
+    }),
+
+  clearConversationUnread: (id) =>
+    set((state) => ({
+      conversations: state.conversations.map((c) => (c.id === id ? { ...c, unread_count: 0 } : c)),
+    })),
+
+  incrementConversationUnread: (id) =>
+    set((state) => ({
+      conversations: state.conversations.map((c) =>
+        c.id === id ? { ...c, unread_count: (c.unread_count ?? 0) + 1 } : c
+      ),
+    })),
+
+  setActiveConversation: (id) => set({ activeConversationId: id }),
+
+  setMessages: (conversationId, messages) =>
+    set((state) => ({ messages: { ...state.messages, [conversationId]: messages } })),
+
+  addMessage: (conversationId, message) =>
+    set((state) => {
+      const existing = state.messages[conversationId] ?? []
+      if (existing.some((m) => m.id === message.id)) return state
+      return { messages: { ...state.messages, [conversationId]: [...existing, message] } }
+    }),
+
+  updateMessage: (conversationId, messageId, updates) =>
+    set((state) => ({
+      messages: {
+        ...state.messages,
+        [conversationId]: (state.messages[conversationId] ?? []).map((m) =>
+          m.id === messageId ? { ...m, ...updates } : m
+        ),
+      },
+    })),
+
+  replaceTempMessage: (conversationId, tempId, message) =>
+    set((state) => ({
+      messages: {
+        ...state.messages,
+        [conversationId]: (state.messages[conversationId] ?? []).map((m) =>
+          m.id === tempId ? message : m
+        ),
+      },
+    })),
+
+  setTyping: (userId, conversationId, isTyping) =>
+    set((state) => ({
+      typingUsers: isTyping
+        ? [
+            ...state.typingUsers.filter(
+              (t) => t.userId !== userId || t.conversationId !== conversationId
+            ),
+            { userId, conversationId },
+          ]
+        : state.typingUsers.filter(
+            (t) => !(t.userId === userId && t.conversationId === conversationId)
+          ),
+    })),
+
+  setUserOnline: (userId, online) =>
+    set((state) => {
+      const next = new Set(state.onlineUserIds)
+      if (online) next.add(userId)
+      else next.delete(userId)
+      return { onlineUserIds: next }
+    }),
+
+  isUserOnline: (userId) => get().onlineUserIds.has(userId),
+}))
