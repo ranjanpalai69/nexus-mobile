@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
+import { Logo } from '@/components/ui/Logo'
 import { signupApi } from '@/lib/utils/otp'
 
 const schema = z.object({
@@ -43,8 +44,11 @@ export default function SignupScreen() {
             <Text className="text-purple-400 text-base">← Back</Text>
           </TouchableOpacity>
 
-          <Text className="text-white font-bold text-3xl mb-2">Create account</Text>
-          <Text className="text-gray-400 text-base mb-8">Join the Nexus community</Text>
+          <View className="items-center mb-8">
+            <Logo width={140} height={40} />
+          </View>
+          <Text className="text-white font-bold text-2xl mb-1">Create account</Text>
+          <Text className="text-gray-400 text-sm mb-8">Join the Nexus community</Text>
 
           <Controller control={control} name="fullName" render={({ field: { onChange, value, onBlur } }) => (
             <Input label="Full Name" value={value} onChangeText={onChange} onBlur={onBlur} error={errors.fullName?.message} autoComplete="name" />

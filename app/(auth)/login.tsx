@@ -4,11 +4,10 @@ import { router } from 'expo-router'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { LinearGradient } from 'expo-linear-gradient'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
+import { Logo } from '@/components/ui/Logo'
 import { supabase } from '@/lib/supabase/client'
-import { GRADIENT_COLORS } from '@/constants/theme'
 
 const schema = z.object({
   email: z.string().email('Invalid email'),
@@ -42,11 +41,7 @@ export default function LoginScreen() {
       <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
         <View className="flex-1 px-6 pt-20 pb-10">
           <View className="items-center mb-10">
-            <LinearGradient colors={GRADIENT_COLORS as unknown as string[]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ borderRadius: 16, padding: 2 }}>
-              <View className="bg-dark-bg rounded-2xl px-6 py-2">
-                <Text className="text-white font-bold text-3xl">Nexus</Text>
-              </View>
-            </LinearGradient>
+            <Logo width={160} height={46} />
             <Text className="text-gray-400 text-base mt-4">Welcome back</Text>
           </View>
 

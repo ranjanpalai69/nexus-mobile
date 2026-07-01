@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, KeyboardAvoidingView, Platform, Alert } f
 import { router, useLocalSearchParams } from 'expo-router'
 import { OtpInput } from '@/components/ui/OtpInput'
 import { Button } from '@/components/ui/Button'
+import { Logo } from '@/components/ui/Logo'
 import { verifyEmailApi, resendOtpApi } from '@/lib/utils/otp'
 import { supabase } from '@/lib/supabase/client'
 
@@ -52,6 +53,9 @@ export default function VerifyEmailScreen() {
           <Text className="text-purple-400 text-base">← Back</Text>
         </TouchableOpacity>
 
+        <View className="items-center mb-8">
+          <Logo width={140} height={40} />
+        </View>
         <Text className="text-white font-bold text-3xl mb-2">Verify Email</Text>
         <Text className="text-gray-400 text-base mb-2">
           Enter the 6-digit code sent to

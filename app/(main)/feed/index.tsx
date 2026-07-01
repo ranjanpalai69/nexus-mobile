@@ -16,8 +16,7 @@ import { fetchFeed, likePost, unlikePost, savePost, unsavePost, createPost, fetc
 import { fetchStories } from '@/lib/api/stories'
 import { useAuthStore } from '@/store/authStore'
 import type { PostWithDetails, CommentWithDetails, StoryGroup } from '@/types/database'
-import { LinearGradient } from 'expo-linear-gradient'
-import { GRADIENT_COLORS } from '@/constants/theme'
+import { Logo } from '@/components/ui/Logo'
 
 export default function FeedScreen() {
   const user = useAuthStore((s) => s.user)
@@ -120,9 +119,7 @@ export default function FeedScreen() {
   return (
     <ScreenContainer edges={['top']}>
       <View className="flex-row items-center justify-between px-4 py-3 border-b border-dark-border">
-        <LinearGradient colors={GRADIENT_COLORS as unknown as string[]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 }}>
-          <Text className="text-white font-bold text-xl">Nexus</Text>
-        </LinearGradient>
+        <Logo width={100} height={30} />
         <TouchableOpacity onPress={() => createPostRef.current?.expand()} className="bg-purple-600 rounded-full w-8 h-8 items-center justify-center">
           <Text className="text-white text-xl font-light">+</Text>
         </TouchableOpacity>

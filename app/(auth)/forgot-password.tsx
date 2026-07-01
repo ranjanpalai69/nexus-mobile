@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
+import { Logo } from '@/components/ui/Logo'
 import { forgotPasswordApi } from '@/lib/utils/otp'
 
 const schema = z.object({ email: z.string().email('Invalid email') })
@@ -51,6 +52,9 @@ export default function ForgotPasswordScreen() {
           <Text className="text-purple-400 text-base">← Back</Text>
         </TouchableOpacity>
 
+        <View className="items-center mb-8">
+          <Logo width={140} height={40} />
+        </View>
         <Text className="text-white font-bold text-3xl mb-2">Forgot password?</Text>
         <Text className="text-gray-400 text-base mb-8">Enter your email and we'll send you a code.</Text>
 

@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
+import { Logo } from '@/components/ui/Logo'
 import { OtpInput } from '@/components/ui/OtpInput'
 import { resetPasswordApi } from '@/lib/utils/otp'
 
@@ -49,6 +50,9 @@ export default function ResetPasswordScreen() {
           <Text className="text-purple-400 text-base">← Back</Text>
         </TouchableOpacity>
 
+        <View className="items-center mb-8">
+          <Logo width={140} height={40} />
+        </View>
         <Text className="text-white font-bold text-3xl mb-2">Reset Password</Text>
         <Text className="text-gray-400 text-base mb-8">Enter the code from your email and choose a new password.</Text>
 
