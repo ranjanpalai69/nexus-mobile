@@ -11,7 +11,9 @@
       "resizeMode": "contain",
       "backgroundColor": "#0F0A1E"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.nexus.app",
@@ -28,13 +30,14 @@
       },
       "package": "com.nexus.app",
       "permissions": [
-        "CAMERA",
-        "RECORD_AUDIO",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE",
-        "RECEIVE_BOOT_COMPLETED",
-        "VIBRATE",
-        "POST_NOTIFICATIONS"
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.VIBRATE",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
       ]
     },
     "web": {
@@ -61,14 +64,17 @@
         {
           "microphonePermission": "Nexus needs microphone access for voice messages and calls."
         }
-      ],
-      "react-native-webrtc"
+      ]
     ],
     "scheme": "nexus",
     "extra": {
       "router": {
         "origin": false
+      },
+      "eas": {
+        "projectId": "eb15b8f2-4fdd-478c-ab80-6c7bb96a00d6"
       }
-    }
+    },
+    "owner": "ranjanpalai69"
   }
 }
